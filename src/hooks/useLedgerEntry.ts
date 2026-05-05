@@ -1,0 +1,120 @@
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import { SorobanRpc, xdr } from "@stellar/stellar-sdk";
+import { useStellarContext } from "../context";
+import type { LedgerEntryState } from "../types";
+import { sleep } from "../utils";
+
+// ─── Reducer ──────────────────────────────────────────────────────────────────
+
+type Action =
+  | { type: "FETCH_START" }
+  | { type: "FETCH_SUCCESS"; payload: SorobanRpc.Api.LedgerEntryResult }
+  | { type: "FETCH_NOT_FOUND" }
+  | { type: "FETCH_ERROR"; payload: Error };
+
+function reducer(state: LedgerEntryState, action: Action): LedgerEntryState {
+  switch (action.type) {
+    case "FETCH_START":
+      return { ...state, isLoading: true, error: null };
+    case "FETCH_SUCCESS":
+      return { data: action.payload, isLoading: false, error: null, lastFetchedAt: new Date(), refetch: state.refetch };
+    case "FETCH_NOT_FOUND":
+      return { data: null, isLoading: false, error: null, lastFetchedAt: new Date(), refetch: state.refetch };
+    case "FETCH_ERROR":
+      return { ...state, isLoading: false, error: action.payload };
+    default:
+      return state;
+  }
+}
+
+// ─── Options ──────────────────────────────────────────────────────────────────
+
+export interface UseLedgerEntryOptions {
+  /** Set false to skip automatic fetching. Default: true */
+  enabled?: boolean;
+  /** Poll every N ms. Set to 0 to disable. Default: 0 */
+  refetchInterval?: number;
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Read a raw Soroban ledger entry by its XDR key.
+ * Useful for reading persistent contract data without constructing a full
+ * contract call.
+ *
+ * @example
+ * ```tsx
+ * // Read a counter stored in a Soroban contract
+ * const key = xdr.LedgerKey.contractData(
+ *   new xdr.LedgerKeyContractData({
+ *     contract: new Address(CONTRACT_ID).toScAddress(),
+ *     key: xdr.ScVal.scvSymbol("Counter"),
+ *     durability: xdr.ContractDataDurability.persistent(),
+ *   })
+ * );
+ *
+ * const { data, isLoading } = useLedgerEntry(key);
+ * ```
+ */
+export function useLedgerEntry(
+  ledgerKey: xdr.LedgerKey | null | undefined,
+  options: UseLedgerEntryOptions = {}
+): LedgerEntryState {
+  const { enabled = true, refetchInterval = 0 } = options;
+  const { config } = useStellarContext();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refetchRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  const [state, dispatch] = useReducer(reducer, {
+    data: null,
+    isLoading: false,
+    error: null,
+    lastFetchedAt: null,
+    refetch: () => refetchRef.current(),
+  });
+
+  const fetch = useCallback(async () => {
+    if (!ledgerKey) return;
+    dispatch({ type: "FETCH_START" });
+
+    try {
+      const server = new SorobanRpc.Server(config.sorobanRpcUrl);
+      const result = await server.getLedgerEntries(ledgerKey);
+
+      if (result.entries.length === 0) {
+        dispatch({ type: "FETCH_NOT_FOUND" });
+        return;
+      }
+
+      const entry = result.entries[0];
+      if (entry) {
+        dispatch({ type: "FETCH_SUCCESS", payload: entry });
+      } else {
+        dispatch({ type: "FETCH_NOT_FOUND" });
+      }
+    } catch (err) {
+      dispatch({
+        type: "FETCH_ERROR",
+        payload: err instanceof Error ? err : new Error(String(err)),
+      });
+    }
+  }, [ledgerKey, config.sorobanRpcUrl]);
+
+  // Keep ref fresh so state.refetch always points to the latest
+  useEffect(() => { refetchRef.current = fetch; }, [fetch]);
+
+  useEffect(() => {
+    if (!enabled || !ledgerKey) return;
+    void fetch();
+  }, [enabled, ledgerKey, fetch]);
+
+  useEffect(() => {
+    if (!enabled || !ledgerKey || refetchInterval <= 0) return;
+    intervalRef.current = setInterval(() => void fetch(), refetchInterval);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [enabled, ledgerKey, refetchInterval, fetch]);
+
+  return state;
+}
