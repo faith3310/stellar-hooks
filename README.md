@@ -249,6 +249,38 @@ Please review our Contributing Guide and Code of Conduct for more details before
 
 ---
 
+## FAQ
+
+### Which Stellar networks are supported?
+
+`testnet` (default), `mainnet`, `futurenet`, and any custom network via the `custom` mode with a `customConfig` prop on `<StellarProvider>`.
+
+### Do I need to install `@stellar/stellar-sdk` separately?
+
+No — it ships as a direct dependency. You only need to install it separately if you require a version different from the bundled one.
+
+### Do I need Freighter to use these hooks?
+
+Most hooks that interact with user accounts (`useFreighter`, `useSorobanContract`, `useStellarBalance`, etc.) rely on a Freighter-connected wallet. `useStellarAccount` and `useLedgerEntry` are read-only and work without a wallet.
+
+### Can I use these hooks with React Native?
+
+`useFreighter` depends on the Freighter browser extension API, so it works in web environments only. The other hooks should work anywhere you can run `@stellar/stellar-sdk`.
+
+### What is the difference between `useStellarAccount` and `useStellarBalance`?
+
+`useStellarBalance` is a lightweight wrapper around `useStellarAccount` that surfaces the native XLM balance at the top level for convenience.
+
+### How do I poll for account or ledger changes?
+
+Both `useStellarAccount` and `useLedgerEntry` accept a `refetchInterval` option (in ms). Set it to `5000` to poll every 5 seconds, or `0` (default) to disable polling.
+
+### Can I use these hooks without a `<StellarProvider>`?
+
+No — the hooks consume configuration from the provider context. Wrap your app with `<StellarProvider>` at the root.
+
+---
+
 ## License
 
 MIT
