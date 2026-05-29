@@ -83,6 +83,8 @@ export interface StellarAccountData {
   balances: StellarBalance[];
   sequence: string;
   subentryCount: number;
+  numSponsored: number;
+  numSponsoring: number;
   thresholds: {
     lowThreshold: number;
     medThreshold: number;
