@@ -43,9 +43,10 @@ export interface UseLedgerEntryOptions {
  * Useful for reading persistent contract data without constructing a full
  * contract call.
  *
+ * @returns {LedgerEntryState}
  * @example
  * ```tsx
- * // Read a counter stored in a Soroban contract
+ * // Build the ledger key for a persistent "Counter" entry
  * const key = xdr.LedgerKey.contractData(
  *   new xdr.LedgerKeyContractData({
  *     contract: new Address(CONTRACT_ID).toScAddress(),
@@ -54,7 +55,17 @@ export interface UseLedgerEntryOptions {
  *   })
  * );
  *
- * const { data, isLoading } = useLedgerEntry(key);
+ * const {
+ *   data,          // SorobanRpc.Api.LedgerEntryResult | null
+ *   isLoading,     // boolean
+ *   error,         // Error | null
+ *   lastFetchedAt, // Date | null
+ *   refetch,       // () => Promise<void>
+ * } = useLedgerEntry(key, { refetchInterval: 3000 });
+ *
+ * const value = data
+ *   ? scValToNative(data.val.contractData().val())
+ *   : null;
  * ```
  */
 export function useLedgerEntry(

@@ -64,17 +64,30 @@ function createReducer<TResult>() {
  * Invoke a Soroban smart-contract method. Handles simulation, auth, submission,
  * and status polling in one hook.
  *
+ * @returns {UseContractCallReturn}
  * @example
  * ```tsx
- * const { call, status, result, error } = useSorobanContract({
+ * const {
+ *   call,     // (overrides?) => Promise<TResult | null> — trigger the contract call
+ *   status,   // "idle" | "building" | "signing" | "submitting" | "polling" | "success" | "error"
+ *   result,   // TResult | null — raw xdr.ScVal; parse with scValToNative()
+ *   hash,     // string | null — transaction hash on success
+ *   error,    // Error | null
+ *   isLoading,  // boolean — true while status is not idle/success/error
+ *   isSuccess,  // boolean
+ *   isError,    // boolean
+ *   reset,    // () => void — return to "idle"
+ * } = useSorobanContract({
  *   contractId: "CABC...XYZ",
  *   method: "increment",
  *   args: [nativeToScVal(1, { type: "u32" })],
  * });
  *
- * return <button onClick={() => call()} disabled={status === "submitting"}>
- *   {status === "success" ? `Done! Hash: ${result}` : "Increment"}
- * </button>;
+ * return (
+ *   <button onClick={() => call()} disabled={status !== "idle" && status !== "error"}>
+ *     {status === "success" ? `Done! Hash: ${hash}` : "Increment"}
+ *   </button>
+ * );
  * ```
  */
 export function useSorobanContract<TResult = unknown>(

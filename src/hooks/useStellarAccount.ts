@@ -43,6 +43,23 @@ export interface UseStellarAccountOptions {
   refetchInterval?: number;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   data,          // StellarAccountData | null — full account info
+ *   isLoading,     // boolean
+ *   error,         // Error | null
+ *   lastFetchedAt, // Date | null
+ *   refetch,       // () => Promise<void>
+ * } = useStellarAccount("G...");
+ *
+ * // data.balances  → StellarBalance[]
+ * // data.sequence  → string
+ * // data.raw       → raw Horizon.AccountResponse
+ * const xlm = data?.balances.find(b => b.isNative);
+ * ```
+ */
 export interface UseStellarAccountReturn extends AccountState {
   refetch: () => Promise<void>;
 }

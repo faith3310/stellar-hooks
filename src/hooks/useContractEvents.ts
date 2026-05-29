@@ -19,6 +19,19 @@ export interface UseContractEventsOptions {
   enabled?: boolean;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   events,    // ContractEvent[] — latest batch of events
+ *   isLoading, // boolean
+ *   error,     // Error | null
+ *   refetch,   // () => Promise<void> — manual fetch
+ *   stop,      // () => void — pause polling
+ *   start,     // () => void — resume polling
+ * } = useContractEvents({ contractId: "CXXX...", intervalMs: 5000 });
+ * ```
+ */
 export interface UseContractEventsReturn {
   events: ContractEvent[];
   isLoading: boolean;

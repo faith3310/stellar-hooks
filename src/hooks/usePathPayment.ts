@@ -48,6 +48,29 @@ export interface UsePathPaymentOptions {
   timeoutSeconds?: number;
 }
 
+/**
+ * @example
+ * ```tsx
+ * // Strict send — send exactly 10 XLM, receive at least 9 USDC
+ * const {
+ *   submit,    // () => Promise<void>
+ *   status,    // "idle" | "submitting" | "polling" | "success" | "error"
+ *   hash,      // string | null
+ *   isLoading, // boolean
+ *   isSuccess, // boolean
+ *   isError,   // boolean
+ *   error,     // Error | null
+ *   reset,     // () => void
+ * } = usePathPayment({
+ *   mode: "strict-send",
+ *   sendAsset: { type: "native" },
+ *   sendAmount: "10",
+ *   destination: "GBXXX...",
+ *   destAsset: { type: "credit", code: "USDC", issuer: "GISSUER..." },
+ *   destMin: "9",
+ * });
+ * ```
+ */
 export interface UsePathPaymentReturn {
   submit: () => Promise<void>;
   status: TransactionStatus;

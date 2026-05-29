@@ -80,10 +80,25 @@ const initial: FreighterState = {
 /**
  * Connect to and interact with the Freighter browser wallet.
  *
+ * @returns {UseFreighterReturn}
  * @example
  * ```tsx
- * const { isConnected, publicKey, connect } = useFreighter();
+ * const {
+ *   isInstalled,       // boolean — Freighter extension detected
+ *   isConnected,       // boolean — user has granted access
+ *   publicKey,         // string | null
+ *   network,           // string | null  e.g. "TESTNET"
+ *   networkPassphrase, // string | null
+ *   isLoading,
+ *   error,
+ *   connect,           // () => Promise<void>
+ *   disconnect,        // () => void
+ *   signTransaction,   // (xdr: string, opts?) => Promise<string>
+ *   signAuthEntry,     // (entryPreimageXdr: string) => Promise<string>
+ *   signBlob,          // (blob: string, opts?) => Promise<string>
+ * } = useFreighter();
  *
+ * if (!isInstalled) return <p>Install Freighter first.</p>;
  * if (!isConnected) return <button onClick={connect}>Connect Wallet</button>;
  * return <p>Connected: {publicKey}</p>;
  * ```
