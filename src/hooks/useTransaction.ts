@@ -13,11 +13,36 @@ import { sleep, backoff } from "../utils";
 
 export interface UseTransactionOptions {
   /** "soroban" uses rpc.Server; "classic" uses Horizon. Default: "soroban" */
+  /** "soroban" uses rpc; "classic" uses Horizon. Default: "soroban" */
   mode?: "soroban" | "classic";
   /** Polling timeout in seconds. Default: 60 */
   timeoutSeconds?: number;
+  /** Callback fired when the transaction is successfully confirmed. */
+  onSuccess?: (hash: string) => void;
+  /** Callback fired when the transaction fails or an error occurs. */
+  onError?: (error: Error) => void;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   submit,    // (signedXdr: string) => Promise<void>
+ *   status,    // "idle" | "submitting" | "polling" | "success" | "error"
+ *   hash,      // string | null — transaction hash on success
+ *   isLoading, // boolean
+ *   isSuccess, // boolean
+ *   isError,   // boolean
+ *   error,     // Error | null
+ *   reset,     // () => void
+ * } = useTransaction({ mode: "classic" });
+ *
+ * async function handleSend() {
+ *   const signedXdr = await freighter.signTransaction(builtXdr);
+ *   await submit(signedXdr);
+ * }
+ * ```
+ */
 export interface UseTransactionReturn extends TransactionState {
   submit: (signedXdr: string) => Promise<void>;
   reset: () => void;
@@ -75,7 +100,7 @@ const initial: TransactionState = {
 export function useTransaction(
   options: UseTransactionOptions = {},
 ): UseTransactionReturn {
-  const { mode = "soroban", timeoutSeconds = 60 } = options;
+  const { mode = "soroban", timeoutSeconds = 60, onSuccess, onError } = options;
   const { config } = useStellarContext();
   const [state, dispatch] = useReducer(reducer, initial);
 
@@ -110,11 +135,13 @@ export function useTransaction(
 
             if (getResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
               dispatch({ type: "SUCCESS", hash: txHash });
+              onSuccess?.(txHash);
               return;
             }
 
             if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
               throw new Error(`Transaction failed on-chain: ${txHash}`);
+              throw new Error(`Transaction failed: ${txHash}`);
             }
           }
 
@@ -127,15 +154,19 @@ export function useTransaction(
           // Horizon submitTransaction resolves when the tx is included in a ledger
           const result = await server.submitTransaction(tx as Parameters<typeof server.submitTransaction>[0]);
           dispatch({ type: "SUCCESS", hash: result.hash });
+          onSuccess?.(result.hash);
         }
       } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
         dispatch({
           type: "ERROR",
-          payload: err instanceof Error ? err : new Error(String(err)),
+          payload: error,
         });
+        onError?.(error);
       }
     },
     [mode, config, timeoutSeconds],
+    [mode, config, timeoutSeconds, onSuccess, onError]
   );
 
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);

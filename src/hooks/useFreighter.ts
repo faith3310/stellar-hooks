@@ -6,7 +6,8 @@ import {
   requestAccess,
   signTransaction,
   signAuthEntry,
-  signBlob,
+  signMessage,
+  WatchWalletChanges,
 } from "@stellar/freighter-api";
 import type { FreighterState, SignTransactionOptions, UseFreighterReturn } from "../types";
 
@@ -22,8 +23,17 @@ type Action =
 function reducer(state: FreighterState, action: Action): FreighterState {
   switch (action.type) {
     case "SET_LOADING":
+      if (state.isLoading === action.payload) return state;
       return { ...state, isLoading: action.payload, error: null };
     case "SET_CONNECTED":
+      if (
+        state.isConnected &&
+        state.publicKey === action.publicKey &&
+        state.network === action.network &&
+        state.networkPassphrase === action.networkPassphrase
+      ) {
+        return state;
+      }
       return {
         ...state,
         isInstalled: true,
@@ -35,8 +45,14 @@ function reducer(state: FreighterState, action: Action): FreighterState {
         error: null,
       };
     case "SET_DISCONNECTED":
+      if (!state.isConnected && state.publicKey === null) return state;
       return {
         ...state,
+        // Reaching SET_DISCONNECTED from the probe means isConnected() returned
+        // true (extension detected) but no address is authorised yet. From the
+        // disconnect() callback the extension was already known to be installed.
+        // In both cases the wallet IS installed, so mark it as such.
+        isInstalled: true,
         isConnected: false,
         publicKey: null,
         network: null,
@@ -45,6 +61,7 @@ function reducer(state: FreighterState, action: Action): FreighterState {
         error: null,
       };
     case "SET_NOT_INSTALLED":
+      if (!state.isInstalled && !state.isLoading) return state;
       return { ...state, isInstalled: false, isLoading: false };
     case "SET_ERROR":
       return { ...state, isLoading: false, error: action.payload };
@@ -63,15 +80,32 @@ const initial: FreighterState = {
   error: null,
 };
 
+const STORAGE_KEY = "stellar-hooks:freighter-connected";
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
  * Connect to and interact with the Freighter browser wallet.
  *
+ * @returns {UseFreighterReturn}
  * @example
  * ```tsx
- * const { isConnected, publicKey, connect } = useFreighter();
+ * const {
+ *   isInstalled,       // boolean — Freighter extension detected
+ *   isConnected,       // boolean — user has granted access
+ *   publicKey,         // string | null
+ *   network,           // string | null  e.g. "TESTNET"
+ *   networkPassphrase, // string | null
+ *   isLoading,
+ *   error,
+ *   connect,           // () => Promise<void>
+ *   disconnect,        // () => void
+ *   signTransaction,   // (xdr: string, opts?) => Promise<string>
+ *   signAuthEntry,     // (entryPreimageXdr: string) => Promise<string>
+ *   signBlob,          // (blob: string, opts?) => Promise<string>
+ * } = useFreighter();
  *
+ * if (!isInstalled) return <p>Install Freighter first.</p>;
  * if (!isConnected) return <button onClick={connect}>Connect Wallet</button>;
  * return <p>Connected: {publicKey}</p>;
  * ```
@@ -92,6 +126,19 @@ export function useFreighter(): UseFreighterReturn {
         if (cancelled) return;
 
         if (!connected) {
+        const connection = await isConnected();
+        // Handle both boolean (v2) and object (v6+) return types
+        const isActuallyConnected =
+          typeof connection === "boolean" ? connection : connection?.isConnected;
+
+        if (cancelled) return;
+
+        if (!isActuallyConnected) {
+        const isConnectedResult = await isConnected();
+        if (cancelled) return;
+
+        if (!isConnectedResult.isConnected) {
+          // Freighter is not installed or not connected yet
           dispatch({ type: "SET_NOT_INSTALLED" });
           return;
         }
@@ -117,6 +164,31 @@ export function useFreighter(): UseFreighterReturn {
           }
         } catch {
           if (!cancelled) dispatch({ type: "SET_DISCONNECTED" });
+        // Check if an address is already authorised
+        const addressResult = await getAddress();
+        if (cancelled) return;
+
+        if (addressResult && !addressResult.error && addressResult.address) {
+          const networkResult = await getNetwork();
+          if (cancelled) return;
+
+          dispatch({
+            type: "SET_CONNECTED",
+            publicKey: addressResult.address,
+            network: networkResult.network ?? "",
+            networkPassphrase: networkResult.networkPassphrase ?? "",
+          });
+        } else {
+          // Check if we should try to restore from localStorage
+          const wasConnected = localStorage.getItem(STORAGE_KEY) === "true";
+          if (wasConnected) {
+            // User was previously connected, but getAddress() returned empty.
+            // This usually means the wallet is locked.
+            // We'll keep them as disconnected but we know it's installed.
+            dispatch({ type: "SET_DISCONNECTED" });
+          } else {
+            dispatch({ type: "SET_DISCONNECTED" });
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -134,6 +206,30 @@ export function useFreighter(): UseFreighterReturn {
     };
   }, []);
 
+  // Subscribe to changes (address, network, passphrase)
+  useEffect(() => {
+    if (!state.isInstalled) return;
+
+    const watcher = new WatchWalletChanges();
+
+    watcher.watch((changes: { address: string; network: string; networkPassphrase: string }) => {
+      if (changes.address) {
+        dispatch({
+          type: "SET_CONNECTED",
+          publicKey: changes.address,
+          network: changes.network || "",
+          networkPassphrase: changes.networkPassphrase || "",
+        });
+      } else {
+        dispatch({ type: "SET_DISCONNECTED" });
+      }
+    });
+
+    return () => {
+      watcher.stop();
+    };
+  }, [state.isInstalled]);
+
   const connect = useCallback(async () => {
     dispatch({ type: "SET_LOADING", payload: true });
     try {
@@ -143,6 +239,20 @@ export function useFreighter(): UseFreighterReturn {
         throw new Error("Freighter access denied or no account selected");
       }
       const networkDetails = await getNetworkDetails();
+      const address = await requestAccess();
+      if (!address) {
+        throw new Error("User rejected the connection request or no address returned");
+      }
+
+      const addressResult = await getAddress();
+      if (addressResult.error || !addressResult.address) {
+        throw new Error(addressResult.error ?? "Failed to get address");
+      }
+
+      const networkResult = await getNetwork();
+      
+      localStorage.setItem(STORAGE_KEY, "true");
+      
       dispatch({
         type: "SET_CONNECTED",
         publicKey,
@@ -158,6 +268,7 @@ export function useFreighter(): UseFreighterReturn {
   }, []);
 
   const disconnect = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
     dispatch({ type: "SET_DISCONNECTED" });
   }, []);
 
@@ -168,6 +279,13 @@ export function useFreighter(): UseFreighterReturn {
         networkPassphrase: opts?.networkPassphrase,
         accountToSign: opts?.address,
       });
+      const signOptions: { networkPassphrase?: string; address?: string } = {};
+      if (opts?.networkPassphrase) signOptions.networkPassphrase = opts.networkPassphrase;
+      if (opts?.address) signOptions.address = opts.address;
+
+      const result = await signTransaction(xdr, signOptions);
+      if (result.error) throw new Error(result.error);
+      return result.signedTxXdr;
     },
     [],
   );
@@ -182,6 +300,26 @@ export function useFreighter(): UseFreighterReturn {
   const signBlobCallback = useCallback(
     async (blob: string, opts?: { accountToSign?: string }): Promise<string> => {
       return signBlob(blob, opts);
+  const signEntry = useCallback(async (entryPreimageXdr: string): Promise<string> => {
+    const result = await signAuthEntry(entryPreimageXdr);
+    if (result.error) throw new Error(result.error);
+    if (!result.signedAuthEntry) throw new Error("Failed to sign auth entry");
+    return result.signedAuthEntry;
+  }, []);
+
+  const signBlobCallback = useCallback(
+    async (blob: string, opts?: { accountToSign?: string }): Promise<string> => {
+      const signOptions: { address?: string } = {};
+      if (opts?.accountToSign) signOptions.address = opts.accountToSign;
+
+      const result = await signMessage(blob, signOptions);
+      if (result.error) throw new Error(result.error);
+
+      const signedMessage = result.signedMessage;
+       if (!signedMessage) throw new Error("Failed to sign blob");
+       if (typeof signedMessage === "string") return signedMessage;
+       if (Buffer.isBuffer(signedMessage)) return signedMessage.toString("base64");
+       throw new Error("Failed to sign blob");
     },
     [],
   );

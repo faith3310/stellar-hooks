@@ -1,12 +1,17 @@
 # stellar-hooks
 
+[![npm version](https://img.shields.io/npm/v/stellar-hooks.svg?style=flat-square)](https://www.npmjs.com/package/stellar-hooks)
+[![license](https://img.shields.io/npm/l/stellar-hooks.svg?style=flat-square)](LICENSE)
+[![bundle size](https://img.shields.io/bundlephobia/min/stellar-hooks?style=flat-square)](https://bundlephobia.com/package/stellar-hooks)
+
 > React hooks for Stellar and Soroban. The `wagmi` you've been waiting for.
+
 
 ```bash
 npm install stellar-hooks
 ```
 
-`stellar-hooks` wires the [Stellar JS SDK v13](https://github.com/stellar/js-stellar-sdk) and the Freighter wallet API into a set of ergonomic React hooks so you can build Stellar dApps without copy-pasting the same boilerplate across 576 Wave repos.
+`stellar-hooks` wires the [Stellar JS SDK v13](https://github.com/stellar/js-stellar-sdk) and the Freighter wallet API into a set of ergonomic React hooks so you can build Stellar dApps without copy-pasting the same boilerplate across repos.
 
 ---
 
@@ -51,6 +56,18 @@ export function App() {
 
 Connect to and interact with the [Freighter](https://freighter.app) browser extension wallet, including arbitrary data signing via `signBlob`.
 
+### `useStellarAccount(publicKey)`
+
+Fetch and subscribe to a Stellar account's data, including balances, sequence number, and thresholds.
+
+### `useSorobanContract(options)`
+
+Invoke a Soroban smart-contract method. Handles simulation, auth, submission, and status polling in one hook.
+
+### `useTransaction(options)`
+
+Submit a pre-signed transaction XDR and poll until it is confirmed. Works with both Soroban (RPC) and classic Stellar (Horizon) transactions.
+
 ```ts
 const {
   isInstalled,       // boolean — is Freighter installed?
@@ -89,6 +106,9 @@ const {
 
 // data.balances   → StellarBalance[]
 // data.sequence   → string
+// data.subentryCount → number
+// data.numSponsored  → number
+// data.numSponsoring → number
 // data.raw        → raw Horizon.AccountResponse
 ```
 
@@ -129,7 +149,7 @@ const { call, status, result, hash, error, reset } = useSorobanContract({
 </button>
 ```
 
-You may also pass a pre-configured `SorobanRpc.Server` instance via the `sorobanRpcServer` option to reuse an existing connection or custom transport:
+You may also pass a pre-configured `rpc.Server` instance via the `sorobanRpcServer` option to reuse an existing connection or custom transport:
 
 ```ts
 const { call, status } = useSorobanContract({
@@ -216,6 +236,7 @@ All types are exported and fully documented via JSDoc.
 import type {
   StellarNetwork,
   NetworkConfig,
+  CustomNetworkConfig,
   StellarAccountData,
   StellarBalance,
   FreighterState,
@@ -245,8 +266,20 @@ The library ships with `@stellar/stellar-sdk` v13 and `@stellar/freighter-api` v
 3. `npm run dev` — builds in watch mode
 4. Edit hooks in `src/hooks/`, types in `src/types/`
 5. Open a PR
+6. Run `npm run changeset` to create a changeset note for your change.
+7. If your PR includes code changes, run `npm run build` before opening the PR.
 
 Please review our Contributing Guide and Code of Conduct for more details before opening a pull request.
+
+---
+
+## Release process
+
+This repository uses Changesets for automated changelog generation, version bumps, and npm publishing.
+
+- Use `npm run changeset` to add a release note to your PR.
+- After a changeset is merged into `main`, the GitHub Actions release workflow will publish the package automatically.
+- To enable automated publishing, add `NPM_TOKEN` to repository secrets.
 
 ---
 
@@ -254,7 +287,7 @@ Please review our Contributing Guide and Code of Conduct for more details before
 
 - [ ] `usePayment()` — send XLM / SAT payments with one hook
 - [ ] `useClaimableBalance()` — list and claim claimable balances
-- [ ] `useContractEvents()` — subscribe to Soroban contract events via streaming
+- [x] `useContractEvents()` — subscribe to Soroban contract events via streaming
 - [ ] `usePathPayment()` — strict send / receive path payment hook
 - [ ] `useStellarToml()` — fetch and parse a domain's `stellar.toml`
 - [ ] React Query / SWR adapter (optional peer dependency)
