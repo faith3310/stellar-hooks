@@ -101,6 +101,7 @@ export type {
   StellarBalance,
   // Wallet
   FreighterState,
+  UseFreighterOptions,
   UseFreighterReturn,
   SignTransactionOptions,
   // Transactions
