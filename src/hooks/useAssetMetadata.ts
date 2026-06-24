@@ -1,3 +1,9 @@
+/**
+ * @file useAssetMetadata.ts
+ * @description Hook for fetching asset metadata from stellar.toml files.
+ * @package stellar-hooks
+ */
+
 import { useMemo } from "react";
 import { useStellarAccount } from "./useStellarAccount";
 import { useStellarToml } from "./useStellarToml";
@@ -11,6 +17,20 @@ export interface AssetMetadata {
   [key: string]: any;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   metadata,  // AssetMetadata | null — matched CURRENCIES entry from stellar.toml
+ *   isLoading, // boolean
+ *   error,     // Error | null
+ * } = useAssetMetadata("USDC", "GISSUER...");
+ *
+ * // metadata.name  → human-readable asset name
+ * // metadata.image → logo URL
+ * // metadata.desc  → description
+ * ```
+ */
 export interface UseAssetMetadataReturn {
   metadata: AssetMetadata | null;
   isLoading: boolean;

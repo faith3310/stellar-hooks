@@ -1,49 +1,42 @@
+/**
+ * @file useContractEvents.ts
+ * @description Hook for polling Soroban contract events from RPC.
+ * @package stellar-hooks
+ * @license MIT
+ */
+
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { rpc as SorobanRpc } from "@stellar/stellar-sdk";
+import * as rpc from "@stellar/stellar-sdk/rpc";
 import { useStellarContext } from "../context";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type ContractEvent = SorobanRpc.Api.EventResponse;
+import { validateContractId } from "../utils";
 
 export interface UseContractEventsOptions {
   /** Soroban contract address (C...) */
   contractId: string;
-  /** Optional topic filters. Each entry is an array of topic segments. */
+  /** Optional array of topic filters for event matching */
   topics?: string[][];
-  /** Polling interval in milliseconds. Default: 5000 */
-  intervalMs?: number;
-  /** Ledger cursor to start from. Default: "now" */
+  /** Event type filter. Default is "contract" */
+  type?: "system" | "contract" | "diagnostic";
+  /** Max number of events per poll. Default: 100 */
+  limit?: number;
+  /** Starting ledger to query events from */
   startLedger?: number;
-  /** Whether polling is active. Default: true */
-  enabled?: boolean;
+  /** Interval in milliseconds to continuously stream/poll events. Default: 0 (disabled) */
+  refetchInterval?: number;
 }
-
-export interface UseContractEventsReturn {
-  events: ContractEvent[];
-  isLoading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
-  /** Stop polling */
-  stop: () => void;
-  /** Resume polling */
-  start: () => void;
-}
-
-// ─── Reducer ──────────────────────────────────────────────────────────────────
 
 interface EventsState {
-  events: ContractEvent[];
+  events: rpc.Api.EventResponse[];
   isLoading: boolean;
   error: Error | null;
 }
 
-type EventsAction =
+type Action =
   | { type: "LOADING" }
-  | { type: "SUCCESS"; payload: ContractEvent[] }
+  | { type: "SUCCESS"; payload: rpc.Api.EventResponse[] }
   | { type: "ERROR"; payload: Error };
 
-function reducer(state: EventsState, action: EventsAction): EventsState {
+function reducer(state: EventsState, action: Action): EventsState {
   switch (action.type) {
     case "LOADING":
       return { ...state, isLoading: true, error: null };
@@ -56,116 +49,70 @@ function reducer(state: EventsState, action: EventsAction): EventsState {
   }
 }
 
-const initial: EventsState = {
-  events: [],
-  isLoading: false,
-  error: null,
-};
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-/**
- * Polls the Soroban RPC `getEvents` endpoint on an interval and returns
- * contract events for the given contractId.
- *
- * Topics are optional filters. Polling can be paused with `stop()` and
- * resumed with `start()`. Upgrade to streaming in a follow-up issue.
- *
- * @example
- * ```tsx
- * const { events, isLoading, error } = useContractEvents({
- *   contractId: "CXXX...",
- *   topics: [["AAAADwAAAAh0cmFuc2Zlcg=="]],
- *   intervalMs: 5000,
- * });
- * ```
- */
-export function useContractEvents(
-  options: UseContractEventsOptions
-): UseContractEventsReturn {
-  const {
-    contractId,
-    topics,
-    intervalMs = 5000,
-    startLedger,
-    enabled = true,
-  } = options;
-
+export function useContractEvents(options: UseContractEventsOptions) {
   const { config } = useStellarContext();
-  const [state, dispatch] = useReducer(reducer, initial);
+  const [state, dispatch] = useReducer(reducer, {
+    events: [],
+    isLoading: false,
+    error: null,
+  });
 
-  // Track whether polling is running
-  const isPolling = useRef(enabled);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cursorRef = useRef<string | undefined>();
+  const isMounted = useRef(true);
 
   const fetchEvents = useCallback(async () => {
-    dispatch({ type: "LOADING" });
-
     try {
-      const server = new SorobanRpc.Server(config.sorobanRpcUrl);
-
-      const filters: SorobanRpc.Server.GetEventsRequest["filters"] = [
-        {
-          type: "contract",
-          contractIds: [contractId],
-          ...(topics ? { topics } : {}),
-        },
-      ];
-
-      const request: SorobanRpc.Server.GetEventsRequest = {
-        filters,
-        ...(startLedger !== undefined ? { startLedger } : {}),
+      validateContractId(options.contractId);
+      dispatch({ type: "LOADING" });
+      const server = new rpc.Server(config.sorobanRpcUrl);
+      
+      const filter: rpc.Api.EventFilter = {
+        type: options.type || "contract",
+        contractIds: [options.contractId],
+        topics: options.topics,
       };
 
-      const response = await server.getEvents(request);
-      dispatch({ type: "SUCCESS", payload: response.events });
-    } catch (err) {
-      dispatch({
-        type: "ERROR",
-        payload: err instanceof Error ? err : new Error(String(err)),
+      const response = await server.getEvents({
+        startLedger: options.startLedger,
+        filters: [filter],
+        pagination: {
+          cursor: cursorRef.current,
+          limit: options.limit || 100,
+        }
       });
+
+      if (isMounted.current && response.events) {
+        if (response.events.length > 0) {
+          cursorRef.current = response.events[response.events.length - 1].pagingToken;
+        }
+        dispatch({ type: "SUCCESS", payload: response.events });
+      }
+    } catch (err) {
+      if (isMounted.current) {
+        dispatch({ type: "ERROR", payload: err instanceof Error ? err : new Error(String(err)) });
+      }
     }
-  }, [contractId, topics, startLedger, config.sorobanRpcUrl]);
+  }, [config.sorobanRpcUrl, options.contractId, options.type, options.topics, options.startLedger, options.limit]);
 
-  const stop = useCallback(() => {
-    isPolling.current = false;
-    if (intervalRef.current !== null) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const start = useCallback(() => {
-    if (isPolling.current) return;
-    isPolling.current = true;
-    fetchEvents();
-    intervalRef.current = setInterval(fetchEvents, intervalMs);
-  }, [fetchEvents, intervalMs]);
-
-  // Start/stop polling based on `enabled`
   useEffect(() => {
-    if (!enabled) {
-      stop();
-      return;
-    }
-
+    isMounted.current = true;
     fetchEvents();
-    intervalRef.current = setInterval(fetchEvents, intervalMs);
+
+    let intervalId: ReturnType<typeof setInterval>;
+    if (options.refetchInterval && options.refetchInterval > 0) {
+      intervalId = setInterval(fetchEvents, options.refetchInterval);
+    }
 
     return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      isMounted.current = false;
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [enabled, intervalMs, fetchEvents, stop]);
+  }, [fetchEvents, options.refetchInterval]);
 
-  return {
-    events: state.events,
-    isLoading: state.isLoading,
-    error: state.error,
+  return { 
+    ...state, 
     refetch: fetchEvents,
-    stop,
-    start,
+    stop: () => { isMounted.current = false; },
+    start: () => { isMounted.current = true; fetchEvents(); }
   };
 }

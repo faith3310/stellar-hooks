@@ -1,3 +1,10 @@
+/**
+ * @file useContractEvents.test.ts
+ * @description Unit tests for the useContractEvents hook.
+ * @package stellar-hooks
+ * @license MIT
+ */
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mock React hooks ─────────────────────────────────────────────────────────
@@ -17,7 +24,14 @@ vi.mock("react", async () => {
 
 const mockGetEvents = vi.fn();
 
+vi.mock("@stellar/stellar-sdk/rpc", () => ({
+  Server: vi.fn().mockImplementation(() => ({
+    getEvents: mockGetEvents,
+  })),
 vi.mock("@stellar/stellar-sdk", () => ({
+  StrKey: {
+    isValidContract: vi.fn().mockReturnValue(true),
+  },
   rpc: {
     Server: vi.fn().mockImplementation(() => ({
       getEvents: mockGetEvents,

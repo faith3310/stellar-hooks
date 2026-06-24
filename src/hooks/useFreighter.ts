@@ -2,19 +2,20 @@ import { useCallback, useEffect, useReducer } from "react";
 import {
   isConnected,
   getAddress,
-  getNetwork,
+  getNetworkDetails,
   requestAccess,
   signTransaction,
   signAuthEntry,
-  signBlob,
+  signMessage,
 } from "@stellar/freighter-api";
 import type { FreighterState, SignTransactionOptions, UseFreighterReturn } from "../types";
+import { asPublicKey, unsafeAsXdrString } from "../types";
 
-// ─── State Machine ─────────────────────────────────────────────────────────────
+// ─── State Machine ────────────────────────────────────────────────────────────
 
 type Action =
   | { type: "SET_LOADING"; payload: boolean }
-  | { type: "SET_CONNECTED"; publicKey: string; network: string; networkPassphrase: string }
+  | { type: "SET_CONNECTED"; publicKey: StellarPublicKey; network: string; networkPassphrase: string }
   | { type: "SET_DISCONNECTED" }
   | { type: "SET_NOT_INSTALLED" }
   | { type: "SET_ERROR"; payload: Error };
@@ -72,43 +73,38 @@ const initial: FreighterState = {
  * ```tsx
  * const { isConnected, publicKey, connect } = useFreighter();
  *
- * if (!isConnected) return <button onClick={connect}>Connect Wallet</button>;
+ * if (!isConnected) return <button onClick={connect}>Connect</button>;
  * return <p>Connected: {publicKey}</p>;
  * ```
  */
 export function useFreighter(): UseFreighterReturn {
   const [state, dispatch] = useReducer(reducer, initial);
 
-  // Probe on mount
   useEffect(() => {
     let cancelled = false;
 
     async function probe() {
       dispatch({ type: "SET_LOADING", payload: true });
-
       try {
-        const { isConnected: connected } = await isConnected();
+        const { isConnected: connected, error: connErr } = await isConnected();
         if (cancelled) return;
 
-        if (!connected) {
-          // Freighter is not installed or not connected yet
+        if (connErr || !connected) {
           dispatch({ type: "SET_NOT_INSTALLED" });
           return;
         }
 
-        // Check if an address is already authorised
-        const addressResult = await getAddress();
+        const { address, error: addrErr } = await getAddress();
         if (cancelled) return;
 
-        if (!addressResult.error && addressResult.address) {
-          const networkResult = await getNetwork();
+        if (!addrErr && address) {
+          const networkDetails = await getNetworkDetails();
           if (cancelled) return;
-
           dispatch({
             type: "SET_CONNECTED",
-            publicKey: addressResult.address,
-            network: networkResult.network ?? "",
-            networkPassphrase: networkResult.networkPassphrase ?? "",
+            publicKey: asPublicKey(address),
+            network: networkDetails.network ?? "",
+            networkPassphrase: networkDetails.networkPassphrase ?? "",
           });
         } else {
           dispatch({ type: "SET_DISCONNECTED" });
@@ -127,17 +123,16 @@ export function useFreighter(): UseFreighterReturn {
   const connect = useCallback(async () => {
     dispatch({ type: "SET_LOADING", payload: true });
     try {
-      await requestAccess();
-      const addressResult = await getAddress();
-      if (addressResult.error || !addressResult.address) {
-        throw new Error(addressResult.error ?? "Failed to get address");
-      }
-      const networkResult = await getNetwork();
+      const { address, error } = await requestAccess();
+      if (error) throw new Error(error.message);
+      if (!address) throw new Error("Failed to get address");
+
+      const networkDetails = await getNetworkDetails();
       dispatch({
         type: "SET_CONNECTED",
-        publicKey: addressResult.address,
-        network: networkResult.network ?? "",
-        networkPassphrase: networkResult.networkPassphrase ?? "",
+        publicKey: asPublicKey(address),
+        network: networkDetails.network ?? "",
+        networkPassphrase: networkDetails.networkPassphrase ?? "",
       });
     } catch (err) {
       dispatch({ type: "SET_ERROR", payload: err instanceof Error ? err : new Error(String(err)) });
@@ -149,30 +144,42 @@ export function useFreighter(): UseFreighterReturn {
   }, []);
 
   const signTx = useCallback(
-    async (xdr: string, opts?: SignTransactionOptions): Promise<string> => {
-      const result = await signTransaction(xdr, {
-        networkPassphrase: opts?.networkPassphrase,
-        address: opts?.address,
+    async (xdr: StellarXdrString, opts?: SignTransactionOptions): Promise<StellarXdrString> => {
+      const { signedTxXdr, error } = await signTransaction(xdr, {
+        ...(opts?.networkPassphrase && { networkPassphrase: opts.networkPassphrase }),
+        ...(opts?.address && { address: opts.address }),
       });
-      if (result.error) throw new Error(result.error);
-      return result.signedTxXdr;
+      if (error) throw new Error(error.message);
+      return unsafeAsXdrString(signedTxXdr);
     },
     []
   );
 
-  const signEntry = useCallback(async (entryPreimageXdr: string): Promise<string> => {
-    const result = await signAuthEntry(entryPreimageXdr);
-    if (result.error) throw new Error(result.error);
-    return result.signedAuthEntry;
-  }, []);
-
-  const signBlobCallback = useCallback(
-    async (blob: string, opts?: { accountToSign?: string }): Promise<string> => {
-      const result = await signBlob(blob, opts);
-      if (result.error) throw new Error(result.error);
-      return result.signedBlob;
+  const signEntry = useCallback(
+    async (entryPreimageXdr: StellarXdrString): Promise<StellarXdrString> => {
+      const publicKey = state.publicKey;
+      if (!publicKey) throw new Error("Wallet not connected");
+      const { signedAuthEntry, error } = await signAuthEntry(entryPreimageXdr, {
+        address: publicKey,
+      });
+      if (error) throw new Error(error.message);
+      if (!signedAuthEntry) throw new Error("No signed auth entry returned");
+      return unsafeAsXdrString(signedAuthEntry);
     },
-    []
+    [state.publicKey]
+  );
+
+  // signBlob maps to signMessage in freighter-api v6
+  const signBlob = useCallback(
+    async (blob: string, opts?: { accountToSign?: string }): Promise<string> => {
+      const address = opts?.accountToSign ?? state.publicKey;
+      if (!address) throw new Error("Wallet not connected");
+      const { signedMessage, error } = await signMessage(blob, { address });
+      if (error) throw new Error(error.message);
+      if (!signedMessage) throw new Error("No signed message returned");
+      return signedMessage.toString();
+    },
+    [state.publicKey]
   );
 
   return {
@@ -181,6 +188,6 @@ export function useFreighter(): UseFreighterReturn {
     disconnect,
     signTransaction: signTx,
     signAuthEntry: signEntry,
-    signBlob: signBlobCallback,
+    signBlob,
   };
 }

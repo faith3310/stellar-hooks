@@ -1,3 +1,9 @@
+/**
+ * @file useClaimableBalance.ts
+ * @description Hook for fetching claimable balances from the Stellar network.
+ * @package stellar-hooks
+ */
+
 import { useCallback, useReducer } from "react";
 import {
   Asset,
@@ -9,6 +15,7 @@ import { useStellarContext } from "../context";
 import { useTransaction } from "./useTransaction";
 import { useFreighter } from "./useFreighter";
 import type { TransactionStatus } from "../types";
+import { validatePublicKey } from "../utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,10 +37,40 @@ export interface ClaimableBalancesState {
   error: Error | null;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   balances,  // ClaimableBalanceRecord[] — list of claimable balances
+ *   isLoading, // boolean
+ *   error,     // Error | null
+ *   refetch,   // () => Promise<void>
+ * } = useClaimableBalances(publicKey);
+ *
+ * // Each record: { id, asset, amount, sponsor, lastModifiedLedger, claimants }
+ * ```
+ */
 export interface UseClaimableBalancesReturn extends ClaimableBalancesState {
   refetch: () => Promise<void>;
 }
 
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   claim,     // (balanceId: string) => Promise<void>
+ *   status,    // "idle" | "submitting" | "polling" | "success" | "error"
+ *   hash,      // string | null
+ *   isLoading, // boolean
+ *   isSuccess, // boolean
+ *   isError,   // boolean
+ *   error,     // Error | null
+ *   reset,     // () => void
+ * } = useClaimBalance();
+ *
+ * return <button onClick={() => claim(balance.id)}>Claim</button>;
+ * ```
+ */
 export interface UseClaimBalanceReturn {
   claim: (balanceId: string) => Promise<void>;
   status: TransactionStatus;
@@ -97,6 +134,7 @@ export function useClaimableBalances(
     dispatch({ type: "LOADING" });
 
     try {
+      validatePublicKey(publicKey);
       const server = new Horizon.Server(config.horizonUrl);
       const response = await server
         .claimableBalances()
@@ -137,16 +175,23 @@ export function useClaimableBalances(
  *
  * @example
  * ```tsx
- * const { claim, status, hash, error } = useClaimBalance();
+ * const { claim, status, hash, error } = useClaimBalance({
+ *   onSuccess: (hash) => console.log("Claimed!", hash),
+ * });
  *
  * return <button onClick={() => claim(balance.id)}>Claim</button>;
  * ```
  */
-export function useClaimBalance(): UseClaimBalanceReturn {
+export function useClaimBalance(
+  options: UseClaimBalanceOptions = {}
+): UseClaimBalanceReturn {
+  const { onSuccess, onError } = options;
   const { config } = useStellarContext();
   const { signTransaction, publicKey } = useFreighter();
   const { submit: submitXdr, reset, ...txState } = useTransaction({
     mode: "classic",
+    ...(onSuccess && { onSuccess }),
+    ...(onError && { onError }),
   });
 
   const claim = useCallback(

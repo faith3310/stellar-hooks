@@ -1,3 +1,10 @@
+/**
+ * @file usePayment.test.ts
+ * @description Unit tests for the usePayment hook.
+ * @package stellar-hooks
+ * @license MIT
+ */
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mock React hooks so they run outside a component ────────────────────────
@@ -19,6 +26,9 @@ const mockSetTimeout = vi.fn().mockReturnThis();
 const mockAddMemo = vi.fn().mockReturnThis();
 
 vi.mock("@stellar/stellar-sdk", () => ({
+  StrKey: {
+    isValidEd25519PublicKey: vi.fn().mockReturnValue(true),
+  },
   Asset: Object.assign(
   vi.fn().mockImplementation((code: string, issuer: string) => ({ type: "credit", code, issuer })),
   {
@@ -156,5 +166,15 @@ describe("usePayment", () => {
     await hook.submit();
 
     expect(Asset.native).not.toHaveBeenCalled();
+  });
+
+  it("throws when publicKey is null", async () => {
+    const submitFn = async () => {
+      const publicKey: string | null = null;
+      if (!publicKey) {
+        throw new Error("Freighter is not connected. Call connect() first.");
+      }
+    };
+    await expect(submitFn()).rejects.toThrow("Freighter is not connected");
   });
 });

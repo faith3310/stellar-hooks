@@ -1,5 +1,13 @@
+/**
+ * @file useStellarToml.ts
+ * @description Hook for fetching and parsing stellar.toml files.
+ * @package stellar-hooks
+ * @license MIT
+ */
+
 import { useCallback, useEffect, useState } from "react";
-import { StellarTomlResolver } from "@stellar/stellar-sdk";
+import { StellarToml } from "@stellar/stellar-sdk";
+import { getCache, setCache } from "../utils";
 
 export interface StellarTomlData {
   CURRENCIES?: Array<Record<string, any>>;
@@ -8,6 +16,25 @@ export interface StellarTomlData {
   [key: string]: any;
 }
 
+export interface UseStellarTomlOptions {
+  /** Time-to-live for cache in milliseconds (default: 300000 = 5 minutes) */
+  cacheTTL?: number;
+}
+
+/**
+ * @example
+ * ```tsx
+ * const {
+ *   data,      // StellarTomlData | null — parsed stellar.toml contents
+ *   isLoading, // boolean
+ *   error,     // Error | null
+ *   refetch,   // () => Promise<void>
+ * } = useStellarToml("stellar.org");
+ *
+ * // data.CURRENCIES → array of supported assets
+ * // data.DOCUMENTATION → org info
+ * ```
+ */
 export interface UseStellarTomlReturn {
   data: StellarTomlData | null;
   isLoading: boolean;
@@ -19,32 +46,45 @@ export interface UseStellarTomlReturn {
  * Fetches and parses a domain's stellar.toml file via the SEP-1 standard.
  */
 export function useStellarToml(
-  domain: string | null | undefined
+  domain: string | null | undefined,
+  options: UseStellarTomlOptions = {},
 ): UseStellarTomlReturn {
+  const { cacheTTL = 300000 } = options;
   const [data, setData] = useState<StellarTomlData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (force = false) => {
     if (!domain) return;
+
+    const cacheKey = `stellar-toml-${domain}`;
+    if (!force) {
+      const cached = getCache<StellarTomlData>(cacheKey);
+      if (cached) {
+        setData(cached);
+        return;
+      }
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      const toml = await StellarTomlResolver.resolve(domain);
-      setData(toml as StellarTomlData);
+      const toml = await StellarToml.Resolver.resolve(domain);
+      const parsed = toml as StellarTomlData;
+      setCache(cacheKey, parsed, cacheTTL);
+      setData(parsed);
     } catch (err) {
-      // Gracefully capture and surface errors (e.g., CORS, network failure)
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setIsLoading(false);
     }
-  }, [domain]);
+  }, [domain, cacheTTL]);
 
   useEffect(() => {
     if (domain) {
-      refetch();
+      void refetch();
     }
   }, [domain, refetch]);
 
-  return { data, isLoading, error, refetch };
+  return { data, isLoading, error, refetch: () => refetch(true) };
 }

@@ -4,9 +4,17 @@
  * and mock @stellar/freighter-api + @stellar/stellar-sdk for integration tests.
  */
 
+/**
+ * @file utils.test.ts
+ * @description Unit tests for utility functions.
+ * @package stellar-hooks
+ * @license MIT
+ */
+
 import { describe, it, expect } from "vitest";
-import { parseAccountResponse } from "../src/utils";
-import { NETWORK_CONFIGS } from "../src/types";
+import { parseAccountResponse } from "../utils";       
+import { NETWORK_CONFIGS } from "../types";
+import type { StellarBalance } from "../types";
 import type { Horizon } from "@stellar/stellar-sdk";
 
 // ─── NETWORK_CONFIGS ──────────────────────────────────────────────────────────
@@ -37,6 +45,8 @@ const mockRaw = {
   account_id: "GABC123",
   sequence: "1234567890",
   subentry_count: 2,
+  num_sponsored: 3,
+  num_sponsoring: 4,
   thresholds: { low_threshold: 0, med_threshold: 0, high_threshold: 0 },
   flags: {
     auth_required: false,
@@ -70,6 +80,12 @@ describe("parseAccountResponse", () => {
     expect(parsed.accountId).toBe("GABC123");
   });
 
+  it("maps reserve-related account fields", () => {
+    expect(parsed.subentryCount).toBe(2);
+    expect(parsed.numSponsored).toBe(3);
+    expect(parsed.numSponsoring).toBe(4);
+  });
+
   it("marks native balance as isNative=true", () => {
     const native = parsed.balances.find((b) => b.isNative);
     expect(native).toBeDefined();
@@ -87,5 +103,25 @@ describe("parseAccountResponse", () => {
 
   it("preserves the raw response", () => {
     expect(parsed.raw).toBe(mockRaw);
+  });
+
+  it("sorts balances by balanceFloat descending", () => {
+    const sorted = [...parsed.balances].sort(
+      (a: StellarBalance, b: StellarBalance) => b.balanceFloat - a.balanceFloat
+    );
+    expect(sorted[0]?.balanceFloat).toBe(100.0);
+  });
+
+  it("sorts balances by asset code ascending", () => {
+    const sorted = [...parsed.balances].sort(
+      (a: StellarBalance, b: StellarBalance) => {
+        if (a.assetCode && b.assetCode)
+          return a.assetCode.localeCompare(b.assetCode);
+        if (a.assetCode) return -1;
+        if (b.assetCode) return 1;
+        return 0;
+      }
+    );
+    expect(sorted[0]?.assetCode).toBe("USDC");
   });
 });
