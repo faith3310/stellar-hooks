@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { Horizon } from "@stellar/stellar-sdk";
+import { getHorizonServer } from "../utils/memoizedServers";
 import { useStellarContext } from "../context";
 import type { StellarAccountData, StellarPublicKey } from "../types";
 import { parseAccountResponse, validatePublicKey } from "../utils";
@@ -98,6 +99,10 @@ export function useStellarAccount(
   const isFetchingRef = useRef(false);
 
   const fetchAccount = useCallback(async () => {
+    if (!publicKey) {
+      dispatch({ type: "FETCH_SUCCESS", payload: null as any });
+      return;
+    }
     if (!publicKey) return;
     if (deduplicate && isFetchingRef.current) return;
 
@@ -106,7 +111,7 @@ export function useStellarAccount(
 
     try {
       validatePublicKey(publicKey);
-      const server = new Horizon.Server(config.horizonUrl);
+      const server = getHorizonServer(config.horizonUrl);
       const rawAccount = await server.loadAccount(publicKey);
       const parsed = parseAccountResponse(rawAccount);
       dispatch({ type: "FETCH_SUCCESS", payload: parsed });
@@ -126,6 +131,8 @@ export function useStellarAccount(
       if (refetchInterval > 0) {
         timerRef.current = setInterval(() => void fetchAccount(), refetchInterval);
       }
+    } else if (!publicKey || !enabled) {
+      dispatch({ type: "FETCH_SUCCESS", payload: null as any });
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
