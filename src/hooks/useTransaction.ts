@@ -6,20 +6,16 @@
  */
 
 import { useCallback, useReducer } from "react";
-import {
-  rpc,
-  TransactionBuilder,
-  Horizon,
-  xdr,
-} from "@stellar/stellar-sdk";
+import { TransactionBuilder, Horizon } from "@stellar/stellar-sdk";
+import * as rpc from "@stellar/stellar-sdk/rpc";
 import { useStellarContext } from "../context";
-import type { TransactionState, TransactionStatus } from "../types";
+import type { TransactionState, TransactionStatus, StellarXdrString, StellarTxHash } from "../types";
+import { asTxHash } from "../types";
 import { sleep, backoff } from "../utils";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
 export interface UseTransactionOptions {
-  /** "soroban" uses rpc.Server; "classic" uses Horizon. Default: "soroban" */
   /** "soroban" uses rpc; "classic" uses Horizon. Default: "soroban" */
   mode?: "soroban" | "classic";
   /** Polling timeout in seconds. Default: 60 */
@@ -34,9 +30,9 @@ export interface UseTransactionOptions {
  * @example
  * ```tsx
  * const {
- *   submit,    // (signedXdr: string) => Promise<void>
+ *   submit,    // (signedXdr: StellarXdrString) => Promise<void>
  *   status,    // "idle" | "submitting" | "polling" | "success" | "error"
- *   hash,      // string | null — transaction hash on success
+ *   hash,      // StellarTxHash | null — transaction hash on success
  *   isLoading, // boolean
  *   isSuccess, // boolean
  *   isError,   // boolean
@@ -51,7 +47,7 @@ export interface UseTransactionOptions {
  * ```
  */
 export interface UseTransactionReturn extends TransactionState {
-  submit: (signedXdr: string) => Promise<void>;
+  submit: (signedXdr: StellarXdrString) => Promise<void>;
   reset: () => void;
 }
 
@@ -60,7 +56,7 @@ export interface UseTransactionReturn extends TransactionState {
 type Action =
   | { type: "RESET" }
   | { type: "STATUS"; payload: TransactionStatus }
-  | { type: "SUCCESS"; hash: string }
+  | { type: "SUCCESS"; hash: StellarTxHash }
   | { type: "ERROR"; payload: Error };
 
 function reducer(state: TransactionState, action: Action): TransactionState {
@@ -112,7 +108,7 @@ export function useTransaction(
   const [state, dispatch] = useReducer(reducer, initial);
 
   const submit = useCallback(
-    async (signedXdr: string) => {
+    async (signedXdr: StellarXdrString) => {
       dispatch({ type: "STATUS", payload: "submitting" });
 
       try {
@@ -141,7 +137,7 @@ export function useTransaction(
             const getResult = await server.getTransaction(txHash);
 
             if (getResult.status === rpc.Api.GetTransactionStatus.SUCCESS) {
-              dispatch({ type: "SUCCESS", hash: txHash });
+              dispatch({ type: "SUCCESS", hash: asTxHash(txHash) });
               onSuccess?.(txHash);
               return;
             }
@@ -159,7 +155,7 @@ export function useTransaction(
 
           // Horizon submitTransaction resolves when the tx is included in a ledger
           const result = await server.submitTransaction(tx as Parameters<typeof server.submitTransaction>[0]);
-          dispatch({ type: "SUCCESS", hash: result.hash });
+          dispatch({ type: "SUCCESS", hash: asTxHash(result.hash) });
           onSuccess?.(result.hash);
         }
       } catch (err) {
@@ -178,4 +174,3 @@ export function useTransaction(
 
   return { ...state, submit, reset };
 }
-

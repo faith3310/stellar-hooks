@@ -16,13 +16,20 @@ vi.mock("react", async () => {
     useCallback: (fn: unknown) => fn,
     useReducer: vi.fn(),
     useEffect: vi.fn(),
-    useRef: vi.fn().mockReturnValue({ current: null }),
+    useRef: vi.fn().mockReturnValue({ current: true }),
+    useRef: vi.fn((val) => ({ current: val })),
   };
 });
 
 // ─── Mock @stellar/stellar-sdk ────────────────────────────────────────────────
 
 const mockGetEvents = vi.fn();
+
+vi.mock("@stellar/stellar-sdk/rpc", () => ({
+  Server: vi.fn().mockImplementation(() => ({
+    getEvents: mockGetEvents,
+  })),
+}));
 
 vi.mock("@stellar/stellar-sdk", () => ({
   StrKey: {

@@ -4,6 +4,7 @@
  * @package stellar-hooks
  * @license MIT
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -13,6 +14,17 @@ import { useSorobanTokenBalance } from "../hooks/useSorobanTokenBalance";
 
 const mockSimulateTransaction = vi.fn();
 const mockGetAccount = vi.fn();
+
+vi.mock("@stellar/stellar-sdk/rpc", () => ({
+  Server: vi.fn().mockImplementation(() => ({
+    simulateTransaction: mockSimulateTransaction,
+    getAccount: mockGetAccount,
+  })),
+  Api: {
+    isSimulationError: (r: any) => typeof r.error === "string",
+    isSimulationSuccess: (r: any) => !r.error && r.result !== undefined,
+  },
+}));
 
 vi.mock("@stellar/stellar-sdk", () => {
   const addOperation = vi.fn().mockReturnThis();
