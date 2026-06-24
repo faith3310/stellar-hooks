@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { rpc } from "@stellar/stellar-sdk";
+import * as rpc from "@stellar/stellar-sdk/rpc";
 import { useStellarContext } from "../context";
 import { validateContractId } from "../utils";
 

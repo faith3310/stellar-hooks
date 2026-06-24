@@ -6,12 +6,8 @@
  */
 
 import { useCallback, useReducer } from "react";
-import {
-  rpc,
-  TransactionBuilder,
-  Horizon,
-  xdr,
-} from "@stellar/stellar-sdk";
+import { TransactionBuilder, Horizon } from "@stellar/stellar-sdk";
+import * as rpc from "@stellar/stellar-sdk/rpc";
 import { useStellarContext } from "../context";
 import type { TransactionState, TransactionStatus, StellarXdrString, StellarTxHash } from "../types";
 import { asTxHash } from "../types";

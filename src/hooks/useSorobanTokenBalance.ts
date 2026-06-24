@@ -6,7 +6,8 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { Address, Contract, rpc, scValToNative, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Address, Contract, scValToNative, TransactionBuilder } from "@stellar/stellar-sdk";
+import * as rpc from "@stellar/stellar-sdk/rpc";
 import { useStellarContext } from "../context";
 import { getCache, setCache, validateContractId, validatePublicKey } from "../utils";
 
