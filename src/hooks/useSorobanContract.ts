@@ -89,8 +89,6 @@ function createReducer<TResult>() {
  * );
  * ```
  */
-export function useSorobanContract<TResult = xdr.ScVal>(
-  options: ContractCallOptions
 export function useSorobanContract<TResult = unknown>(
   contractId: StellarContractId,
   options: Omit<ContractCallOptions<TResult>, "contractId">
@@ -302,9 +300,9 @@ export function useSorobanContract<TResult = unknown>(
         }
         
         let parsed: TResult | null = null;
-        const resultVal = sim.result?.retval ?? (sim as any).results?.[0]?.retval;
-        if (resultVal) {
-          parsed = parseResult ? parseResult(resultVal) : resultVal as unknown as TResult;
+        if (sim.result) {
+          const scVal = sim.result.retval;
+          parsed = parseResult ? parseResult(scVal) : scVal as unknown as TResult;
         }
 
         dispatch({ type: "SUCCESS", payload: parsed as TResult, hash: unsafeAsTxHash("simulation") });
@@ -317,8 +315,6 @@ export function useSorobanContract<TResult = unknown>(
     },
     [baseParse, simulate]
   );
-
-  const [result, setResult] = useState<TResult | null>(null);
 
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 

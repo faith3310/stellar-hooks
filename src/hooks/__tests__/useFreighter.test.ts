@@ -47,7 +47,6 @@ describe("useFreighter", () => {
     // SET_DISCONNECTED. Then connect() calls requestAccess + getNetworkDetails.
     mockDisconnected();
     vi.mocked(freighter.requestAccess).mockResolvedValue({ address: VALID_KEY });
-    // getNetworkDetails is already mocked by mockConnected helper; mock it for connect() call too
     vi.mocked(freighter.getNetworkDetails).mockResolvedValue({
       network: "TESTNET",
       networkPassphrase: "Test SDF Network ; September 2015",

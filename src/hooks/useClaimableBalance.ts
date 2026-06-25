@@ -357,7 +357,7 @@ export function useCreateClaimableBalance(
   const { onSuccess, onError } = options;
   const { config } = useStellarContext();
   const { signTransaction, publicKey } = useFreighter();
-  const { submit: submitXdr, reset, ...txState } = useTransaction({
+  const { submit: submitXdr, reset, ...txState } = useTransactionCore({
     mode: "classic",
     ...(onSuccess && { onSuccess }),
     ...(onError && { onError }),
@@ -410,7 +410,7 @@ export function useCreateClaimableBalance(
       const builtXdr = tx.toXDR();
 
       // 5. Sign via Freighter
-      const signedXdr = await signTransaction(builtXdr, {
+      const signedXdr = await signTransaction(unsafeAsXdrString(builtXdr), {
         networkPassphrase: config.networkPassphrase,
       });
 
